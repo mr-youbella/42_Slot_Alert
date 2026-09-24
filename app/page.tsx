@@ -1,6 +1,13 @@
 "use client";
+import { useEffect, useRef, useState } from "react";
 
-import { useEffect, useState } from "react";
+type ApiResult = {
+	availableSlots?: number;
+	connected?: boolean;
+	error?: string;
+	project?: string;
+	teamId?: string;
+};
 
 const events = [
 	["Checked for available slots", "No availability", "12 sec ago", "bg-slate-500"],
@@ -45,33 +52,157 @@ function CardTitle({ icon, title, text }: { icon: string; title: string; text: s
 export default function Home() {
 	const [monitoring, setMonitoring] = useState(true);
 	const [sound, setSound] = useState(true);
-	const [notifications, setNotifications] = useState(true);
+	const [notifications, setNotifications] = useState(false);
 	const [interval, setIntervalValue] = useState("60 sec");
-	const [project, setProject] = useState("ft_irc");
-	const [team, setTeam] = useState("7697544");
+	const [project, setProject] = useState("");
+	const [team, setTeam] = useState("");
 	const [projectLink, setProjectLink] = useState("");
 	const [linkError, setLinkError] = useState("");
 	const [sessionToken, setSessionToken] = useState("");
 	const [showToken, setShowToken] = useState(false);
 	const [showCookieHelp, setShowCookieHelp] = useState(false);
 	const [connected, setConnected] = useState(false);
+	const [availableSlots, setAvailableSlots] = useState(0);
+	const lastKnownSlots = useRef(0);
+	const [connectionError, setConnectionError] = useState("");
+	const [reCheckError, setReCheckError] = useState("");
+	const [isChecking, setIsChecking] = useState(false);
 	const [ago, setAgo] = useState(12);
-	const [toast, setToast] = useState(true);
+	const [intervalSeconds, setIntervalSeconds] = useState<number>(0);
+	const [toast, setToast] = useState(false);
 	const [saved, setSaved] = useState(false);
 
 	useEffect(() => {
 		const id = setInterval(() => setAgo((n) => (n >= 59 ? 0 : n + 1)), 1000);
 		return () => clearInterval(id);
 	}, []);
-	const checkNow = () => {
-		setAgo(0);
-		setToast(true);
+
+	useEffect(() => {
+		async function restoreConnection() {
+			try {
+				const response = await fetch("/api/session", { cache: "no-store" });
+				const data = (await response.json()) as ApiResult;
+
+				if (!response.ok || !data.connected)
+					return;
+
+				setConnected(true);
+				if (data.project)
+					setProject(data.project);
+				if (data.teamId)
+					setTeam(data.teamId);
+			} catch { }
+		};
+
+		void restoreConnection();
+	}, []);
+
+	async function playAlertSound() {
+		if (!sound)
+			return;
+
+		try {
+			const audio = new Audio("/sounds/alert_sound.mp3");
+			audio.volume = 0.5;
+			await audio.play();
+		} catch (error) {
+			console.error("Could not play alert sound:", error);
+		}
 	};
-	const save = () => {
+
+	async function requestStatus() {
+		setIsChecking(true);
+		setReCheckError("");
+
+		try {
+			const response = await fetch("/api/status", { cache: "no-store" });
+			const data = (await response.json()) as ApiResult;
+
+			if (!response.ok)
+				throw new Error(data.error ?? "Could not check 42.");
+
+			const nextSlotCount = data.availableSlots ?? 0;
+			const hasNewAvailability = nextSlotCount > lastKnownSlots.current;
+			setAvailableSlots(nextSlotCount);
+			lastKnownSlots.current = nextSlotCount;
+			setAgo(0);
+			if (hasNewAvailability) {
+				setToast(true);
+				playAlertSound();
+
+				if (notifications && "Notification" in window && Notification.permission === "granted")
+					new Notification("42 Slot Alert", { body: `${nextSlotCount} evaluation slot(s) are available for ${project}.`, });
+			}
+		} catch (error) {
+			setReCheckError(error instanceof Error ? error.message : "Could not check 42.");
+		} finally {
+			setIsChecking(false);
+		}
+	};
+
+	function checkNow() {
+		if (!connected) {
+			setConnectionError("Connect your 42 session before checking slots.");
+			setReCheckError("Connect your 42 session before checking slots.");
+			return;
+		}
+
+		void requestStatus();
+	};
+
+	async function connectTo42() {
+		setIsChecking(true);
+		setConnectionError("");
+		setReCheckError("");
+
+		try {
+			const response = await fetch("/api/connect", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ token: sessionToken, project, teamId: team }),
+			});
+			const data = (await response.json()) as ApiResult;
+
+			if (!response.ok)
+				throw new Error(data.error ?? "Could not connect to 42.");
+
+			setSessionToken("");
+			setConnected(true);
+			setAvailableSlots(data.availableSlots ?? 0);
+			lastKnownSlots.current = data.availableSlots ?? 0;
+			setAgo(0);
+		} catch (error) {
+			setConnected(false);
+			setConnectionError(error instanceof Error ? error.message : "Could not connect to 42.");
+		} finally {
+			setIsChecking(false);
+		}
+	};
+	const disconnect42 = async () => {
+		await fetch("/api/disconnect", { method: "POST" });
+		setConnected(false);
+		setAvailableSlots(0);
+		setSessionToken("");
+		setConnectionError("");
+		setReCheckError("");
+	};
+
+	useEffect(() => {
+		if (!connected || !monitoring)
+			return;
+
+		const delay = interval === "30 sec" ? 30_000 : interval === "2 min" ? 120_000 : 60_000;
+		setIntervalSeconds(delay / 1000);
+		const id = window.setInterval(() => requestStatus(), delay);
+		return () => window.clearInterval(id);
+	}, [connected, interval, monitoring]);
+
+	function save() {
 		setSaved(true);
 		setTimeout(() => setSaved(false), 1800);
 	};
-	const updateProjectFromLink = (value: string) => {
+
+	function updateProjectFromLink(value: string) {
 		setProjectLink(value);
 		setLinkError("");
 
@@ -80,12 +211,10 @@ export default function Home() {
 
 		try {
 			const url = new URL(value);
-			const projectMatch = url.pathname.match(
-				/^\/projects\/([^/]+)\/slots(?:\.json)?\/?$/,
-			);
+			const projectMatch = url.pathname.match(/^\/projects\/([^/]+)\/slots(?:\.json)?\/?$/,);
 			const nextTeamId = url.searchParams.get("team_id");
 
-			if (!projectMatch || !nextTeamId) {
+			if (url.protocol !== "https:" || url.hostname !== "projects.intra.42.fr" || !projectMatch || !nextTeamId) {
 				setLinkError("Paste a 42 slots link that includes both the project and team_id.",);
 				return;
 			}
@@ -96,20 +225,21 @@ export default function Home() {
 			setLinkError("That does not look like a valid 42 slots link.");
 		}
 	};
-	const control = (label: string, description: string, value: boolean, action: () => void, icon = "") =>
-	(
-		<div className="flex items-center justify-between gap-5 px-5 py-4 sm:px-6">
-			<div>
-				<p className="text-sm font-medium text-slate-200">
-					{icon} {label}
-				</p>
-				{description && (
-					<p className="mt-1 text-xs text-[#738096]">{description}</p>
-				)}
+	function control(label: string, description: string, value: boolean, action: () => void, icon = "") {
+		return (
+			<div className="flex items-center justify-between gap-5 px-5 py-4 sm:px-6">
+				<div>
+					<p className="text-sm font-medium text-slate-200">
+						{icon} {label}
+					</p>
+					{description && (
+						<p className="mt-1 text-xs text-[#738096]">{description}</p>
+					)}
+				</div>
+				<Toggle on={value} click={action} label={label} />
 			</div>
-			<Toggle on={value} click={action} label={label} />
-		</div>
-	);
+		);
+	};
 
 	return (
 		<main className="min-h-screen bg-[#090d10] text-[#eef2f7]">
@@ -152,7 +282,7 @@ export default function Home() {
 						</h1>
 					</div>
 					<p className="text-xs text-[#738096]">
-						◷ &nbsp; Next check in {monitoring ? 60 - ago : "paused"}{" "}
+						◷ &nbsp; Next check in {monitoring ? intervalSeconds - ago : "paused"}{" "}
 						seconds
 					</p>
 				</section>
@@ -168,7 +298,7 @@ export default function Home() {
 							<div className="flex items-center gap-3">
 								<i className="size-2.5 rounded-full bg-emerald-400 shadow-[0_0_0_4px_rgba(49,209,124,.12),0_0_10px_#31d17c]" />
 								<h2 className="text-2xl font-semibold tracking-[-.04em] sm:text-[29px]">
-									No slots available right now
+									{availableSlots > 0 ? "Slots available now" : "No slots available right now"}
 								</h2>
 							</div>
 							<p className="mt-2.5 text-sm text-[#8b98aa]">
@@ -184,7 +314,7 @@ export default function Home() {
 								Available slots
 							</p>
 							<p className="mt-1 text-5xl font-semibold tracking-[-.07em]">
-								0
+								{availableSlots}
 							</p>
 							<p className="mt-1 text-xs text-[#667388]">
 								No openings detected
@@ -200,9 +330,17 @@ export default function Home() {
 							onClick={checkNow}
 							className="w-fit rounded-lg border border-[#33404d] bg-[#141b22] px-3.5 py-2 text-xs hover:bg-[#1d2630]"
 						>
-							↻ &nbsp; Check now
+							{isChecking ? "Checking…" : "↻ Check now"}
 						</button>
 					</div>
+					{reCheckError && (
+						<p
+							role="alert"
+							className="m-3 rounded-lg border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs text-rose-200"
+						>
+							{reCheckError}
+						</p>
+					)}
 				</section>
 				<div className="mt-5 grid gap-5 lg:grid-cols-2">
 					<section className="overflow-hidden rounded-2xl border border-[#252e38] bg-[#11161c]">
@@ -212,12 +350,7 @@ export default function Home() {
 							text="Choose how often we check for new openings."
 						/>
 						<div className="divide-y divide-[#252d36]">
-							{control(
-								"Automatic monitoring",
-								"Keep checking while this page is closed",
-								monitoring,
-								() => setMonitoring(!monitoring),
-							)}
+							{control("Automatic monitoring", "Keep checking while this page is closed", monitoring, () => setMonitoring(!monitoring),)}
 							<div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
 								<div>
 									<p className="text-sm font-medium">
@@ -239,19 +372,12 @@ export default function Home() {
 									))}
 								</div>
 							</div>
-							{control(
-								"Play alert sound",
-								"",
-								sound,
-								() => setSound(!sound),
-								"♬",
-							)}
-							{control(
-								"Browser notifications",
-								"",
-								notifications,
-								() => setNotifications(!notifications),
-								"♧",
+							{control("Play alert sound", "", sound, () => setSound(!sound), "♬",)}
+							{control("Browser notifications", "", notifications, () => {
+								if (!notifications && "Notification" in window && Notification.permission === "default")
+									void Notification.requestPermission();
+								setNotifications(!notifications);
+							}, "♧",
 							)}
 						</div>
 					</section>
@@ -317,6 +443,7 @@ export default function Home() {
 							<input
 								value={project}
 								onChange={(e) => setProject(e.target.value)}
+								placeholder="ft_irc"
 								className="mt-2 h-11 w-full rounded-lg border border-[#2d3743] bg-[#181e26] px-3.5 font-mono text-sm text-slate-100 outline-none focus:border-[#6ea8fe]"
 							/>
 						</label>
@@ -325,6 +452,7 @@ export default function Home() {
 							<input
 								value={team}
 								onChange={(e) => setTeam(e.target.value)}
+								placeholder="7697544"
 								className="mt-2 h-11 w-full rounded-lg border border-[#2d3743] bg-[#181e26] px-3.5 font-mono text-sm text-slate-100 outline-none focus:border-[#6ea8fe]"
 							/>
 						</label>
@@ -379,28 +507,28 @@ export default function Home() {
 							</label>
 							<button
 								type="button"
-								onClick={() =>
-									setConnected(Boolean(sessionToken.trim()))
-								}
+								onClick={() => {
+									if (connected)
+										disconnect42();
+									else
+										connectTo42();
+								}}
+								disabled={isChecking || (!connected && !sessionToken.trim())}
 								className={`h-11 rounded-lg px-4 text-xs font-semibold transition ${connected ? "bg-emerald-400 text-[#062211]" : "bg-[#f3f5f7] text-[#15191e] hover:bg-white"}`}
 							>
-								{connected ? "✓ Connected" : "Connect 42"}
+								{isChecking ? "Connecting…" : connected ? "Disconnect" : "Connect 42"}
 							</button>
 						</div>
 						<div className="mt-4 flex flex-col gap-3 rounded-xl border border-[#27313b] bg-[#0d1217] px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
 							<p className="text-xs leading-5 text-[#8492a5]">
-								Your session cookie is as sensitive as a password.
-								Never share it or add it to GitHub.
+								Your session cookie is as sensitive as a password. Never share it or add it to GitHub.
 							</p>
 							<button
 								type="button"
 								onClick={() => setShowCookieHelp(!showCookieHelp)}
 								className="w-fit text-xs font-medium text-[#79aefe] hover:text-[#b7d2ff]"
 							>
-								{showCookieHelp
-									? "Hide instructions"
-									: "How do I find my cookie?"}{" "}
-								↗
+								{showCookieHelp ? "Hide instructions" : "How do I find my cookie?"}{" "} ↗
 							</button>
 						</div>
 						{showCookieHelp && (
@@ -417,10 +545,9 @@ export default function Home() {
 										in your browser.
 									</li>
 									<li>
-										Open browser developer tools, then go to
-										Application / Storage → Cookies →{" "}
+										Open browser developer tools, then go to Application / Storage → Cookies →{" "}
 										<span className="font-mono text-[#c8d7e9]">
-											https://intra.42.fr
+											https://profile.intra.42.fr/
 										</span>
 										.
 									</li>
@@ -433,11 +560,17 @@ export default function Home() {
 									</li>
 								</ol>
 								<p className="mt-2 text-amber-300/90">
-									Treat this value like your password. Sign out of
-									42 to invalidate it if you ever share it by
-									mistake.
+									Treat this value like your password. Sign out of 42 to invalidate it if you ever share it by mistake.
 								</p>
 							</div>
+						)}
+						{connectionError && (
+							<p
+								role="alert"
+								className="mt-3 rounded-lg border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs text-rose-200"
+							>
+								{connectionError}
+							</p>
 						)}
 					</div>
 				</section>
@@ -462,7 +595,7 @@ export default function Home() {
 										onClick={() => setToast(false)}
 										aria-label="Dismiss"
 									>
-										×
+										X
 									</button>
 								</div>
 								<p className="mt-1 text-xs text-[#9caf9f]">
