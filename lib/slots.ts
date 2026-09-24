@@ -5,6 +5,7 @@ export type SlotConfig = {
 
 export type SlotCheck = {
 	availableSlots: number;
+	slotIds: string[];
 	checkedAt: string;
 };
 
@@ -36,14 +37,31 @@ export function parseSlotsLink(value: unknown): SlotConfig | null {
 	}
 }
 
-function extractCount(payload: unknown): number {
+function extractSlots(payload: unknown): unknown[] {
 	if (Array.isArray(payload))
-		return payload.length;
+		return payload;
 
 	if (payload && typeof payload === "object" && "slots" in payload && Array.isArray(payload.slots))
-		return payload.slots.length;
+		return payload.slots;
 
-	return 0;
+	return [];
+}
+
+function extractSlotIds(slots: unknown[]): string[] {
+	const ids = new Set<string>();
+
+	for (const slot of slots) {
+		if (!slot || typeof slot !== "object" || !("ids" in slot) || typeof slot.ids !== "string")
+			continue;
+
+		for (const id of slot.ids.split(",")) {
+			const normalizedId = id.trim();
+			if (normalizedId)
+				ids.add(normalizedId);
+		}
+	}
+
+	return [...ids];
 }
 
 export async function checkSlots(token: string, config: SlotConfig,): Promise<SlotCheck> {
@@ -77,7 +95,12 @@ export async function checkSlots(token: string, config: SlotConfig,): Promise<Sl
 			throw new SlotError(502, "42 returned an unexpected response. Try again soon.");
 		}
 
-		return { availableSlots: extractCount(payload), checkedAt: new Date().toISOString(), };
+		const slots = extractSlots(payload);
+		return {
+			availableSlots: slots.length,
+			slotIds: extractSlotIds(slots),
+			checkedAt: new Date().toISOString(),
+		};
 	} catch (error) {
 		if (error instanceof SlotError)
 			throw error;

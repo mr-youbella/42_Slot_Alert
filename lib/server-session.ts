@@ -55,3 +55,8 @@ export function remainingCooldown(session: ServerSession): number {
 export function markChecked(session: ServerSession) {
 	session.lastCheckAt = Date.now();
 }
+
+export function updateSessionConfig(session: ServerSession, config: SlotConfig) {
+	session.config = config;
+	session.lastCheckAt = 0;
+}

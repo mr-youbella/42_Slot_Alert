@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type ApiResult = {
 	availableSlots?: number;
+	slotIds?: string[];
 	connected?: boolean;
 	error?: string;
 	project?: string;
@@ -63,17 +64,17 @@ export default function Home() {
 	const [showCookieHelp, setShowCookieHelp] = useState(false);
 	const [connected, setConnected] = useState(false);
 	const [availableSlots, setAvailableSlots] = useState(0);
-	const lastKnownSlots = useRef(0);
+	const lastKnownSlotIds = useRef(new Set<string>());
 	const [connectionError, setConnectionError] = useState("");
 	const [reCheckError, setReCheckError] = useState("");
 	const [isChecking, setIsChecking] = useState(false);
 	const [ago, setAgo] = useState(12);
-	const [intervalSeconds, setIntervalSeconds] = useState<number>(0);
 	const [toast, setToast] = useState(false);
 	const [saved, setSaved] = useState(false);
+	const intervalSeconds = interval === "30 sec" ? 30 : interval === "2 min" ? 120 : 60;
 
 	useEffect(() => {
-		const id = setInterval(() => setAgo((n) => (n >= 59 ? 0 : n + 1)), 1000);
+		const id = setInterval(() => setAgo((n) => n + 1), 1000);
 		return () => clearInterval(id);
 	}, []);
 
@@ -94,10 +95,10 @@ export default function Home() {
 			} catch { }
 		};
 
-		void restoreConnection();
+		restoreConnection();
 	}, []);
 
-	async function playAlertSound() {
+	const playAlertSound = useCallback(async () => {
 		if (!sound)
 			return;
 
@@ -108,9 +109,9 @@ export default function Home() {
 		} catch (error) {
 			console.error("Could not play alert sound:", error);
 		}
-	};
+	}, [sound]);
 
-	async function requestStatus() {
+	const requestStatus = useCallback(async () => {
 		setIsChecking(true);
 		setReCheckError("");
 
@@ -122,9 +123,10 @@ export default function Home() {
 				throw new Error(data.error ?? "Could not check 42.");
 
 			const nextSlotCount = data.availableSlots ?? 0;
-			const hasNewAvailability = nextSlotCount > lastKnownSlots.current;
+			const nextSlotIds = data.slotIds ?? [];
+			const hasNewAvailability = nextSlotIds.some((id) => !lastKnownSlotIds.current.has(id),);
 			setAvailableSlots(nextSlotCount);
-			lastKnownSlots.current = nextSlotCount;
+			lastKnownSlotIds.current = new Set(nextSlotIds);
 			setAgo(0);
 			if (hasNewAvailability) {
 				setToast(true);
@@ -138,7 +140,7 @@ export default function Home() {
 		} finally {
 			setIsChecking(false);
 		}
-	};
+	}, [notifications, playAlertSound, project]);
 
 	function checkNow() {
 		if (!connected) {
@@ -169,7 +171,7 @@ export default function Home() {
 			setSessionToken("");
 			setConnected(true);
 			setAvailableSlots(data.availableSlots ?? 0);
-			lastKnownSlots.current = data.availableSlots ?? 0;
+			lastKnownSlotIds.current = new Set(data.slotIds ?? []);
 			setAgo(0);
 		} catch (error) {
 			setConnected(false);
@@ -178,29 +180,86 @@ export default function Home() {
 			setIsChecking(false);
 		}
 	};
-	const disconnect42 = async () => {
-		await fetch("/api/disconnect", { method: "POST" });
-		setConnected(false);
-		setAvailableSlots(0);
-		setSessionToken("");
+
+	async function disconnect42() {
+		setIsChecking(true);
 		setConnectionError("");
-		setReCheckError("");
-	};
+
+		try {
+			const response = await fetch("/api/disconnect", { method: "POST" });
+			if (!response.ok)
+				throw new Error("Could not disconnect. Try again.");
+
+			setConnected(false);
+			setAvailableSlots(0);
+			lastKnownSlotIds.current = new Set();
+			setSessionToken("");
+			setReCheckError("");
+		} catch (error) {
+			setConnectionError(
+				error instanceof Error ? error.message : "Could not disconnect.",
+			);
+		} finally {
+			setIsChecking(false);
+		}
+	}
 
 	useEffect(() => {
 		if (!connected || !monitoring)
 			return;
 
-		const delay = interval === "30 sec" ? 30_000 : interval === "2 min" ? 120_000 : 60_000;
-		setIntervalSeconds(delay / 1000);
-		const id = window.setInterval(() => requestStatus(), delay);
+		const id = window.setInterval(() => void requestStatus(), intervalSeconds * 1000);
 		return () => window.clearInterval(id);
-	}, [connected, interval, monitoring]);
+	}, [connected, intervalSeconds, monitoring, requestStatus]);
 
-	function save() {
-		setSaved(true);
-		setTimeout(() => setSaved(false), 1800);
-	};
+	async function save() {
+		setConnectionError("");
+
+		if (!connected) {
+			setSaved(true);
+			setTimeout(() => setSaved(false), 1800);
+			return;
+		}
+
+		try {
+			const response = await fetch("/api/config", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ project, teamId: team }),
+			});
+			const data = (await response.json()) as ApiResult;
+			if (!response.ok)
+				throw new Error(data.error ?? "Could not save this configuration.");
+
+			setAvailableSlots(data.availableSlots ?? 0);
+			lastKnownSlotIds.current = new Set(data.slotIds ?? []);
+			setAgo(0);
+			setSaved(true);
+			setTimeout(() => setSaved(false), 1800);
+		} catch (error) {
+			setConnectionError(
+				error instanceof Error ? error.message : "Could not save this configuration.",
+			);
+		}
+	}
+
+	async function toggleNotifications() {
+		if (notifications) {
+			setNotifications(false);
+			return;
+		}
+
+		if (!("Notification" in window)) {
+			setConnectionError("This browser does not support notifications.");
+			return;
+		}
+
+		const permission = await Notification.requestPermission();
+		setNotifications(permission === "granted");
+
+		if (permission !== "granted")
+			setConnectionError("Notification permission was not granted.");
+	}
 
 	function updateProjectFromLink(value: string) {
 		setProjectLink(value);
@@ -225,6 +284,7 @@ export default function Home() {
 			setLinkError("That does not look like a valid 42 slots link.");
 		}
 	};
+
 	function control(label: string, description: string, value: boolean, action: () => void, icon = "") {
 		return (
 			<div className="flex items-center justify-between gap-5 px-5 py-4 sm:px-6">
@@ -282,7 +342,7 @@ export default function Home() {
 						</h1>
 					</div>
 					<p className="text-xs text-[#738096]">
-						◷ &nbsp; Next check in {monitoring ? intervalSeconds - ago : "paused"}{" "}
+						◷ &nbsp; Next check in {monitoring ? Math.max(0, intervalSeconds - ago) : "paused"}{" "}
 						seconds
 					</p>
 				</section>
@@ -350,7 +410,6 @@ export default function Home() {
 							text="Choose how often we check for new openings."
 						/>
 						<div className="divide-y divide-[#252d36]">
-							{control("Automatic monitoring", "Keep checking while this page is closed", monitoring, () => setMonitoring(!monitoring),)}
 							<div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
 								<div>
 									<p className="text-sm font-medium">
@@ -364,7 +423,10 @@ export default function Home() {
 									{["30 sec", "60 sec", "2 min"].map((x) => (
 										<button
 											key={x}
-											onClick={() => setIntervalValue(x)}
+											onClick={() => {
+												setIntervalValue(x);
+												setAgo(0);
+											}}
 											className={`rounded-lg px-3 py-1.5 text-xs ${interval === x ? "bg-[#37414f] text-white" : "text-[#788599]"}`}
 										>
 											{x}
@@ -373,12 +435,7 @@ export default function Home() {
 								</div>
 							</div>
 							{control("Play alert sound", "", sound, () => setSound(!sound), "♬",)}
-							{control("Browser notifications", "", notifications, () => {
-								if (!notifications && "Notification" in window && Notification.permission === "default")
-									void Notification.requestPermission();
-								setNotifications(!notifications);
-							}, "♧",
-							)}
+							{control("Browser notifications", "", notifications, () => toggleNotifications(), "♧",)}
 						</div>
 					</section>
 					<section className="overflow-hidden rounded-2xl border border-[#252e38] bg-[#11161c]">
@@ -459,8 +516,7 @@ export default function Home() {
 					</div>
 					<div className="flex flex-col gap-4 border-t border-[#252d36] px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
 						<p className="text-xs leading-5 text-[#728096]">
-							ⓘ &nbsp; Session credentials are stored securely on the
-							server and never shown in your browser.
+							ⓘ &nbsp; Session credentials are stored securely on the server and never shown in your browser.
 						</p>
 						<button
 							onClick={save}
