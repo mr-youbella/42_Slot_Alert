@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 
 type ApiResult = {
@@ -365,8 +366,15 @@ export default function Home() {
 			<nav className="border-b border-[#202731] bg-[#0b0f12]">
 				<div className="mx-auto flex h-17.25 max-w-330 items-center justify-between px-5 sm:px-8">
 					<div className="flex items-center gap-3">
-						<span className="grid size-9 place-items-center rounded-[11px] bg-slate-100 text-lg text-[#11161b]">
-							⌑
+						<span className="grid size-9 place-items-center rounded-[11px] overflow-hidden">
+							<Image
+								src="/images/logo.png"
+								alt="42 Slot Alert"
+								width={36}
+								height={36}
+								className="size-9"
+								priority
+							/>
 						</span>
 						<b className="text-sm">42 Slot Alert</b>
 						<span className={`hidden items-center gap-2 rounded-full border px-3 py-1 text-xs sm:flex ${isMonitoringActive ? "border-emerald-400/15 bg-emerald-400/[.07] text-emerald-300" : "border-slate-700 text-slate-400"}`}>
@@ -375,11 +383,6 @@ export default function Home() {
 						</span>
 					</div>
 					<div className="flex items-center gap-3 text-[#91a0b4]">
-						<button aria-label="Notifications" className="relative">
-							♧
-							<i className="absolute -right-1 -top-1 size-1.5 rounded-full bg-emerald-400" />
-						</button>
-						<button aria-label="Settings">⚙</button>
 						<span className="grid size-9 place-items-center rounded-full border border-[#2b3440] bg-[#151b22] text-xs">
 							42
 						</span>

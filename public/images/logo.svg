@@ -1,0 +1,274 @@
+<svg width="512" height="512" viewBox="0 0 512 512"
+     fill="none" xmlns="http://www.w3.org/2000/svg">
+
+  <defs>
+    <!-- Dark background -->
+    <linearGradient id="background" x1="60" y1="40" x2="450" y2="470">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="1" stop-color="#030712"/>
+    </linearGradient>
+
+    <!-- 42 / Intra accent -->
+    <linearGradient id="teal" x1="120" y1="100" x2="400" y2="400">
+      <stop offset="0" stop-color="#00D4D8"/>
+      <stop offset="1" stop-color="#008C95"/>
+    </linearGradient>
+
+    <!-- Alert -->
+    <linearGradient id="alert" x1="350" y1="310" x2="440" y2="410">
+      <stop offset="0" stop-color="#FBBF24"/>
+      <stop offset="1" stop-color="#F97316"/>
+    </linearGradient>
+
+    <filter id="shadow"
+            x="-30%" y="-30%"
+            width="160%" height="160%">
+      <feDropShadow
+        dx="0"
+        dy="12"
+        stdDeviation="14"
+        flood-color="#000000"
+        flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- ===================== -->
+  <!-- DARK BACKGROUND -->
+  <!-- ===================== -->
+
+  <rect
+    x="32"
+    y="32"
+    width="448"
+    height="448"
+    rx="110"
+    fill="url(#background)"
+  />
+
+  <!-- Subtle teal glow -->
+  <circle
+    cx="120"
+    cy="110"
+    r="100"
+    fill="#00BABC"
+    opacity="0.06"
+  />
+
+  <circle
+    cx="420"
+    cy="430"
+    r="120"
+    fill="#00BABC"
+    opacity="0.04"
+  />
+
+  <!-- ===================== -->
+  <!-- INTRA WINDOW -->
+  <!-- ===================== -->
+
+  <rect
+    x="95"
+    y="105"
+    width="322"
+    height="250"
+    rx="28"
+    fill="#0F172A"
+    stroke="#273449"
+    stroke-width="2"
+    filter="url(#shadow)"
+  />
+
+  <!-- Header -->
+  <rect
+    x="95"
+    y="105"
+    width="322"
+    height="55"
+    rx="28"
+    fill="#172033"
+  />
+
+  <rect
+    x="95"
+    y="132"
+    width="322"
+    height="28"
+    fill="#172033"
+  />
+
+  <!-- Browser dots -->
+  <circle cx="125" cy="132" r="7" fill="#EF4444"/>
+  <circle cx="148" cy="132" r="7" fill="#F59E0B"/>
+  <circle cx="171" cy="132" r="7" fill="#22C55E"/>
+
+  <!-- INTRA -->
+  <text
+    x="335"
+    y="139"
+    text-anchor="middle"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="19"
+    font-weight="700"
+    letter-spacing="1"
+    fill="#94A3B8"
+  >INTRA</text>
+
+  <!-- ===================== -->
+  <!-- SLOTS -->
+  <!-- ===================== -->
+
+  <rect
+    x="125" y="190"
+    width="70"
+    height="55"
+    rx="12"
+    fill="#1E293B"
+  />
+
+  <rect
+    x="220" y="190"
+    width="70"
+    height="55"
+    rx="12"
+    fill="#1E293B"
+  />
+
+  <rect
+    x="315" y="190"
+    width="70"
+    height="55"
+    rx="12"
+    fill="#1E293B"
+  />
+
+  <rect
+    x="125" y="265"
+    width="70"
+    height="55"
+    rx="12"
+    fill="#1E293B"
+  />
+
+  <rect
+    x="220" y="265"
+    width="70"
+    height="55"
+    rx="12"
+    fill="#1E293B"
+  />
+
+  <!-- AVAILABLE SLOT -->
+  <rect
+    x="315"
+    y="265"
+    width="70"
+    height="55"
+    rx="12"
+    fill="#063F43"
+    stroke="#00C8CE"
+    stroke-width="2"
+  />
+
+  <!-- Slot indicators -->
+  <circle cx="160" cy="217" r="10" fill="#475569"/>
+  <circle cx="255" cy="217" r="10" fill="#475569"/>
+  <circle cx="350" cy="217" r="10" fill="#475569"/>
+
+  <circle cx="160" cy="292" r="10" fill="#475569"/>
+  <circle cx="255" cy="292" r="10" fill="#475569"/>
+
+  <!-- Available -->
+  <circle
+    cx="350"
+    cy="292"
+    r="15"
+    fill="#22C55E"
+  />
+
+  <path
+    d="M342 292L348 298L359 285"
+    stroke="white"
+    stroke-width="5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <!-- ===================== -->
+  <!-- 42 -->
+  <!-- ===================== -->
+
+  <text
+    x="256"
+    y="430"
+    text-anchor="middle"
+    font-family="Arial Black, Arial, Helvetica, sans-serif"
+    font-size="86"
+    font-weight="900"
+    fill="white"
+    letter-spacing="-5"
+  >42</text>
+
+  <!-- Small teal underline -->
+  <rect
+    x="190"
+    y="445"
+    width="132"
+    height="5"
+    rx="2.5"
+    fill="url(#teal)"
+  />
+
+  <!-- ===================== -->
+  <!-- ALERT BADGE -->
+  <!-- ===================== -->
+
+  <circle
+    cx="402"
+    cy="360"
+    r="58"
+    fill="url(#alert)"
+    stroke="#0F172A"
+    stroke-width="10"
+    filter="url(#shadow)"
+  />
+
+  <!-- Bell -->
+  <path
+    d="
+      M402 326
+      C384 326 372 340 372 359
+      V373
+      L362 386
+      H442
+      L432 373
+      V359
+      C432 340 420 326 402 326
+      Z
+    "
+    fill="white"
+  />
+
+  <!-- Bell clapper -->
+  <circle
+    cx="402"
+    cy="397"
+    r="7"
+    fill="white"
+  />
+
+  <!-- Alert rays -->
+  <path
+    d="M360 326L348 314"
+    stroke="white"
+    stroke-width="8"
+    stroke-linecap="round"
+  />
+
+  <path
+    d="M444 326L456 314"
+    stroke="white"
+    stroke-width="8"
+    stroke-linecap="round"
+  />
+
+</svg>
