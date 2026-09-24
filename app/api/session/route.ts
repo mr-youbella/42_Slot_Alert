@@ -15,5 +15,6 @@ export async function GET() {
 		connected: true,
 		project: session.config.project,
 		teamId: session.config.teamId,
+		activities: session.activities,
 	});
 }

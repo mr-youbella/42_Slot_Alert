@@ -1,10 +1,22 @@
 import type { SlotConfig } from "./slots";
 
-type ServerSession = {
+export type ActivityTone = "info" | "success" | "error";
+
+export type SessionActivity = {
+	id: string;
+	title: string;
+	description: string;
+	tone: ActivityTone;
+	createdAt: number;
+};
+
+export type ServerSession = {
 	token: string;
 	config: SlotConfig;
 	lastCheckAt: number;
 	expiresAt: number;
+	activities: SessionActivity[];
+	lastKnownSlotIds: Set<string>;
 };
 
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -25,6 +37,8 @@ export function createSession(token: string, config: SlotConfig): string {
 		config,
 		lastCheckAt: 0,
 		expiresAt: Date.now() + SESSION_TTL_MS,
+		activities: [],
+		lastKnownSlotIds: new Set(),
 	});
 
 	return id;
@@ -59,4 +73,24 @@ export function markChecked(session: ServerSession) {
 export function updateSessionConfig(session: ServerSession, config: SlotConfig) {
 	session.config = config;
 	session.lastCheckAt = 0;
+	session.lastKnownSlotIds = new Set();
+}
+
+export function addSessionActivity(session: ServerSession, title: string, description: string, tone: ActivityTone = "info",) {
+	session.activities.unshift({
+		id: crypto.randomUUID(),
+		title,
+		description,
+		tone,
+		createdAt: Date.now(),
+	});
+	session.activities = session.activities.slice(0, 20);
+}
+
+export function getNewSlotIds(session: ServerSession, slotIds: string[]): string[] {
+	return slotIds.filter((id) => !session.lastKnownSlotIds.has(id));
+}
+
+export function updateKnownSlotIds(session: ServerSession, slotIds: string[]) {
+	session.lastKnownSlotIds = new Set(slotIds);
 }

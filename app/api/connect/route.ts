@@ -1,7 +1,13 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { checkSlots, parseSlotConfig, SlotError } from "@/lib/slots";
-import { createSession, deleteSession } from "@/lib/server-session";
+import {
+	addSessionActivity,
+	createSession,
+	deleteSession,
+	getSession,
+	updateKnownSlotIds,
+} from "@/lib/server-session";
 
 const SESSION_COOKIE = "slot_alert_session";
 
@@ -35,7 +41,24 @@ export async function POST(request: NextRequest) {
 		const cookieStore = await cookies();
 		deleteSession(cookieStore.get(SESSION_COOKIE)?.value);
 		const id = createSession(token, config);
-		const response = NextResponse.json({ ...result, connected: true });
+		const session = getSession(id);
+
+		if (!session)
+			throw new Error("Could not create a session.");
+
+		updateKnownSlotIds(session, result.slotIds);
+		addSessionActivity(
+			session,
+			"Connected to 42",
+			"Session verified and slot monitoring is ready.",
+			"success",
+		);
+		const response = NextResponse.json({
+			...result,
+			connected: true,
+			activities: session.activities,
+			hasNewAvailability: false,
+		});
 
 		response.cookies.set(SESSION_COOKIE, id, {
 			httpOnly: true,

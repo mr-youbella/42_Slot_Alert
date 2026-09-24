@@ -4,18 +4,30 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type ApiResult = {
 	availableSlots?: number;
 	slotIds?: string[];
+	hasNewAvailability?: boolean;
+	activities?: Activity[];
 	connected?: boolean;
 	error?: string;
 	project?: string;
 	teamId?: string;
 };
 
-const events = [
-	["Checked for available slots", "No availability", "12 sec ago", "bg-slate-500"],
-	["Monitoring enabled", "Automatic checks every 60 sec", "4 min ago", "bg-blue-400"],
-	["Alert preferences updated", "Browser notifications on", "8 min ago", "bg-blue-400"],
-	["Checked for available slots", "No availability", "9 min ago", "bg-slate-500"],
-];
+type Activity = {
+	id: string;
+	title: string;
+	description: string;
+	tone: "info" | "success" | "error";
+	createdAt: number;
+};
+
+function formatRelativeTime(timestamp: number) {
+	const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+
+	if (elapsedSeconds < 60)
+		return `${elapsedSeconds} sec ago`;
+
+	return `${Math.floor(elapsedSeconds / 60)} min ago`;
+}
 
 function Toggle({ on, click, label }: { on: boolean; click: () => void; label: string }) {
 	return (
@@ -51,7 +63,7 @@ function CardTitle({ icon, title, text }: { icon: string; title: string; text: s
 }
 
 export default function Home() {
-	const [monitoring, setMonitoring] = useState(true);
+	const monitoring = true;
 	const [sound, setSound] = useState(true);
 	const [notifications, setNotifications] = useState(false);
 	const [interval, setIntervalValue] = useState("60 sec");
@@ -71,7 +83,22 @@ export default function Home() {
 	const [ago, setAgo] = useState(12);
 	const [toast, setToast] = useState(false);
 	const [saved, setSaved] = useState(false);
+	const [activities, setActivities] = useState<Activity[]>([]);
 	const intervalSeconds = interval === "30 sec" ? 30 : interval === "2 min" ? 120 : 60;
+	const isMonitoringActive = connected && monitoring;
+
+	const addActivity = useCallback((title: string, description: string, tone: Activity["tone"] = "info",) => {
+		setActivities((current) => [
+			{
+				id: `${Date.now()}-${Math.random()}`,
+				title,
+				description,
+				tone,
+				createdAt: Date.now(),
+			},
+			...current,
+		].slice(0, 20));
+	}, []);
 
 	useEffect(() => {
 		const id = setInterval(() => setAgo((n) => n + 1), 1000);
@@ -92,11 +119,12 @@ export default function Home() {
 					setProject(data.project);
 				if (data.teamId)
 					setTeam(data.teamId);
+				setActivities(data.activities ?? []);
 			} catch { }
 		};
 
 		restoreConnection();
-	}, []);
+	}, [addActivity]);
 
 	const playAlertSound = useCallback(async () => {
 		if (!sound)
@@ -119,14 +147,19 @@ export default function Home() {
 			const response = await fetch("/api/status", { cache: "no-store" });
 			const data = (await response.json()) as ApiResult;
 
-			if (!response.ok)
+			if (!response.ok) {
+				if (data.activities)
+					setActivities(data.activities);
 				throw new Error(data.error ?? "Could not check 42.");
+			}
 
 			const nextSlotCount = data.availableSlots ?? 0;
 			const nextSlotIds = data.slotIds ?? [];
-			const hasNewAvailability = nextSlotIds.some((id) => !lastKnownSlotIds.current.has(id),);
+			const hasNewAvailability = data.hasNewAvailability
+				?? nextSlotIds.some((id) => !lastKnownSlotIds.current.has(id));
 			setAvailableSlots(nextSlotCount);
 			lastKnownSlotIds.current = new Set(nextSlotIds);
+			setActivities(data.activities ?? []);
 			setAgo(0);
 			if (hasNewAvailability) {
 				setToast(true);
@@ -136,11 +169,13 @@ export default function Home() {
 					new Notification("42 Slot Alert", { body: `${nextSlotCount} evaluation slot(s) are available for ${project}.`, });
 			}
 		} catch (error) {
-			setReCheckError(error instanceof Error ? error.message : "Could not check 42.");
+			const message = error instanceof Error ? error.message : "Could not check 42.";
+			setReCheckError(message);
+			addActivity("Slot check failed", message, "error");
 		} finally {
 			setIsChecking(false);
 		}
-	}, [notifications, playAlertSound, project]);
+	}, [addActivity, notifications, playAlertSound, project]);
 
 	function checkNow() {
 		if (!connected) {
@@ -149,7 +184,7 @@ export default function Home() {
 			return;
 		}
 
-		void requestStatus();
+		requestStatus();
 	};
 
 	async function connectTo42() {
@@ -172,10 +207,13 @@ export default function Home() {
 			setConnected(true);
 			setAvailableSlots(data.availableSlots ?? 0);
 			lastKnownSlotIds.current = new Set(data.slotIds ?? []);
+			setActivities(data.activities ?? []);
 			setAgo(0);
 		} catch (error) {
 			setConnected(false);
-			setConnectionError(error instanceof Error ? error.message : "Could not connect to 42.");
+			const message = error instanceof Error ? error.message : "Could not connect to 42.";
+			setConnectionError(message);
+			addActivity("42 connection failed", message, "error");
 		} finally {
 			setIsChecking(false);
 		}
@@ -195,10 +233,11 @@ export default function Home() {
 			lastKnownSlotIds.current = new Set();
 			setSessionToken("");
 			setReCheckError("");
+			addActivity("Disconnected from 42", "Your server-side session was removed.", "info");
 		} catch (error) {
-			setConnectionError(
-				error instanceof Error ? error.message : "Could not disconnect.",
-			);
+			const message = error instanceof Error ? error.message : "Could not disconnect.";
+			setConnectionError(message);
+			addActivity("Disconnect failed", message, "error");
 		} finally {
 			setIsChecking(false);
 		}
@@ -233,13 +272,14 @@ export default function Home() {
 
 			setAvailableSlots(data.availableSlots ?? 0);
 			lastKnownSlotIds.current = new Set(data.slotIds ?? []);
+			setActivities(data.activities ?? []);
 			setAgo(0);
 			setSaved(true);
 			setTimeout(() => setSaved(false), 1800);
 		} catch (error) {
-			setConnectionError(
-				error instanceof Error ? error.message : "Could not save this configuration.",
-			);
+			const message = error instanceof Error ? error.message : "Could not save this configuration.";
+			setConnectionError(message);
+			addActivity("Could not save configuration", message, "error");
 		}
 	}
 
@@ -257,8 +297,13 @@ export default function Home() {
 		const permission = await Notification.requestPermission();
 		setNotifications(permission === "granted");
 
-		if (permission !== "granted")
+		if (permission !== "granted") {
 			setConnectionError("Notification permission was not granted.");
+			addActivity("Notifications not enabled", "Browser permission was not granted.", "error");
+			return;
+		}
+
+		addActivity("Browser notifications enabled", "You will be notified about new slots.", "success");
 	}
 
 	function updateProjectFromLink(value: string) {
@@ -310,13 +355,9 @@ export default function Home() {
 							⌑
 						</span>
 						<b className="text-sm">42 Slot Alert</b>
-						<span
-							className={`hidden items-center gap-2 rounded-full border px-3 py-1 text-xs sm:flex ${monitoring ? "border-emerald-400/15 bg-emerald-400/[.07] text-emerald-300" : "border-slate-700 text-slate-400"}`}
-						>
-							<i
-								className={`size-1.5 rounded-full ${monitoring ? "bg-emerald-400 shadow-[0_0_8px_#31d17c]" : "bg-slate-500"}`}
-							/>
-							{monitoring ? "Monitoring active" : "Monitoring paused"}
+						<span className={`hidden items-center gap-2 rounded-full border px-3 py-1 text-xs sm:flex ${isMonitoringActive ? "border-emerald-400/15 bg-emerald-400/[.07] text-emerald-300" : "border-slate-700 text-slate-400"}`}>
+							<i className={`size-1.5 rounded-full ${isMonitoringActive ? "bg-emerald-400 shadow-[0_0_8px_#31d17c]" : "bg-slate-500"}`} />
+							{isChecking ? "Checking 42…" : isMonitoringActive ? "Monitoring active" : "Monitoring paused"}
 						</span>
 					</div>
 					<div className="flex items-center gap-3 text-[#91a0b4]">
@@ -342,8 +383,7 @@ export default function Home() {
 						</h1>
 					</div>
 					<p className="text-xs text-[#738096]">
-						◷ &nbsp; Next check in {monitoring ? Math.max(0, intervalSeconds - ago) : "paused"}{" "}
-						seconds
+						◷ &nbsp; Next check in {isMonitoringActive ? Math.max(0, intervalSeconds - ago) : "paused"}{" "} seconds
 					</p>
 				</section>
 				<section className="overflow-hidden rounded-2xl border border-[#252e38] bg-[#11161c]">
@@ -445,22 +485,27 @@ export default function Home() {
 							text="A record of your latest monitoring events."
 						/>
 						<ol className="space-y-5 px-5 py-6 sm:px-6">
-							{events.map(([title, description, time, dot]) => (
-								<li key={time} className="flex gap-3.5">
+							{activities.length === 0 && (
+								<li className="py-7 text-center text-sm text-[#718096]">
+									Activity will appear when you connect and check slots.
+								</li>
+							)}
+							{activities.map((activity) => (
+								<li key={activity.id} className="flex gap-3.5">
 									<i
-										className={`mt-1.5 size-2 shrink-0 rounded-full ${dot}`}
+										className={`mt-1.5 size-2 shrink-0 rounded-full ${activity.tone === "success" ? "bg-emerald-400" : activity.tone === "error" ? "bg-rose-400" : "bg-blue-400"}`}
 									/>
 									<div className="flex flex-1 justify-between gap-3">
 										<div>
 											<p className="text-sm text-[#d3d9e1]">
-												{title}
+												{activity.title}
 											</p>
 											<p className="mt-1 text-xs text-[#718096]">
-												{description}
+												{activity.description}
 											</p>
 										</div>
 										<time className="shrink-0 text-xs text-[#718096]">
-											{time}
+											{formatRelativeTime(activity.createdAt)}
 										</time>
 									</div>
 								</li>
@@ -547,7 +592,7 @@ export default function Home() {
 											setConnected(false);
 										}}
 										type={showToken ? "text" : "password"}
-										autoComplete="off"
+										autoComplete="new-password"
 										spellCheck="false"
 										placeholder="Paste your session cookie value"
 										className="h-11 w-full rounded-lg border border-[#2d3743] bg-[#181e26] py-2 pl-3.5 pr-16 font-mono text-sm text-slate-100 outline-none placeholder:text-[#59677a] focus:border-[#6ea8fe]"

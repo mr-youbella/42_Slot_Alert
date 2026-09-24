@@ -1,7 +1,13 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { checkSlots, parseSlotConfig, SlotError } from "@/lib/slots";
-import { getSession, markChecked, updateSessionConfig } from "@/lib/server-session";
+import {
+	addSessionActivity,
+	getSession,
+	markChecked,
+	updateKnownSlotIds,
+	updateSessionConfig,
+} from "@/lib/server-session";
 
 const SESSION_COOKIE = "slot_alert_session";
 
@@ -29,8 +35,15 @@ export async function POST(request: NextRequest) {
 	try {
 		const result = await checkSlots(session.token, config);
 		updateSessionConfig(session, config);
+		updateKnownSlotIds(session, result.slotIds);
 		markChecked(session);
-		return NextResponse.json({ ...result, project: config.project, teamId: config.teamId });
+		addSessionActivity(session, "Project configuration updated", `${config.project} · Team #${config.teamId}`, "success",);
+		return NextResponse.json({
+			...result,
+			project: config.project,
+			teamId: config.teamId,
+			activities: session.activities,
+		});
 	} catch (error) {
 		const message = error instanceof SlotError ? error.message : "Could not save this configuration.";
 		const status = error instanceof SlotError ? error.status : 502;
