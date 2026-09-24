@@ -1,9 +1,8 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type ApiResult = {
 	availableSlots?: number;
-	slotIds?: string[];
 	hasNewAvailability?: boolean;
 	activities?: Activity[];
 	connected?: boolean;
@@ -78,7 +77,6 @@ export default function Home() {
 	const [showCookieHelp, setShowCookieHelp] = useState(false);
 	const [connected, setConnected] = useState(false);
 	const [availableSlots, setAvailableSlots] = useState(0);
-	const lastKnownSlotIds = useRef(new Set<string>());
 	const [connectionError, setConnectionError] = useState("");
 	const [reCheckError, setReCheckError] = useState("");
 	const [isChecking, setIsChecking] = useState(false);
@@ -158,11 +156,8 @@ export default function Home() {
 			}
 
 			const nextSlotCount = data.availableSlots ?? 0;
-			const nextSlotIds = data.slotIds ?? [];
-			const hasNewAvailability = data.hasNewAvailability
-				?? nextSlotIds.some((id) => !lastKnownSlotIds.current.has(id));
+			const hasNewAvailability = data.hasNewAvailability ?? false;
 			setAvailableSlots(nextSlotCount);
-			lastKnownSlotIds.current = new Set(nextSlotIds);
 			setActivities(data.activities ?? []);
 			setAgo(0);
 			if (hasNewAvailability) {
@@ -215,7 +210,6 @@ export default function Home() {
 			setSessionToken("");
 			setConnected(true);
 			setAvailableSlots(data.availableSlots ?? 0);
-			lastKnownSlotIds.current = new Set(data.slotIds ?? []);
 			setActivities(data.activities ?? []);
 			setAgo(0);
 		} catch (error) {
@@ -239,7 +233,6 @@ export default function Home() {
 
 			setConnected(false);
 			setAvailableSlots(0);
-			lastKnownSlotIds.current = new Set();
 			setSessionToken("");
 			setReCheckError("");
 			addActivity("Disconnected from 42", "Your server-side session was removed.", "info");
@@ -280,7 +273,6 @@ export default function Home() {
 				throw new Error(data.error ?? "Could not save this configuration.");
 
 			setAvailableSlots(data.availableSlots ?? 0);
-			lastKnownSlotIds.current = new Set(data.slotIds ?? []);
 			setActivities(data.activities ?? []);
 			setAgo(0);
 			setSaved(true);
