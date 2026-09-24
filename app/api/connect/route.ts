@@ -1,13 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { checkSlots, parseSlotConfig, SlotError } from "@/lib/slots";
-import {
-	addSessionActivity,
-	createSession,
-	deleteSession,
-	getSession,
-	updateKnownSlotIds,
-} from "@/lib/server-session";
+import { addSessionActivity, createSession, deleteSession, getSession, updateKnownSlotIds } from "@/lib/server-session";
 
 const SESSION_COOKIE = "slot_alert_session";
 
@@ -22,17 +16,26 @@ export async function POST(request: NextRequest) {
 	if (Number(request.headers.get("content-length") ?? 0) > 8_192)
 		return NextResponse.json({ error: "Request is too large." }, { status: 413 });
 
-	let body: { token?: unknown; project?: unknown; teamId?: unknown };
+	let body: {
+		token?: unknown;
+		project?: unknown;
+		teamId?: unknown;
+		nextDaysLimit?: unknown;
+	};
 	try {
 		body = await request.json();
 	} catch {
 		return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 	}
 
-	const config = parseSlotConfig(body.project, body.teamId);
+	const config = parseSlotConfig(
+		body.project,
+		body.teamId,
+		body.nextDaysLimit,
+	);
 	const token = typeof body.token === "string" ? body.token.trim() : "";
 	if (!config)
-		return NextResponse.json({ error: "Enter a valid project and Team ID." }, { status: 400 });
+		return NextResponse.json({ error: "Enter a valid project, Team ID, and days limit (1-30)." }, { status: 400 });
 	if (token.length < 20 || token.length > 4096 || /[\u0000-\u001F]/.test(token))
 		return NextResponse.json({ error: "Enter a valid 42 session cookie." }, { status: 400 });
 
@@ -47,12 +50,7 @@ export async function POST(request: NextRequest) {
 			throw new Error("Could not create a session.");
 
 		updateKnownSlotIds(session, result.slotIds);
-		addSessionActivity(
-			session,
-			"Connected to 42",
-			"Session verified and slot monitoring is ready.",
-			"success",
-		);
+		addSessionActivity(session, "Connected to 42", "Session verified and slot monitoring is ready.", "success");
 		const response = NextResponse.json({
 			...result,
 			connected: true,

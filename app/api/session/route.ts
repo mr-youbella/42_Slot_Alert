@@ -15,6 +15,7 @@ export async function GET() {
 		connected: true,
 		project: session.config.project,
 		teamId: session.config.teamId,
+		nextDaysLimit: session.config.nextDaysLimit,
 		activities: session.activities,
 	});
 }

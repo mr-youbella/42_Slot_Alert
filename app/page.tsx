@@ -10,6 +10,7 @@ type ApiResult = {
 	error?: string;
 	project?: string;
 	teamId?: string;
+	nextDaysLimit?: number;
 };
 
 type Activity = {
@@ -69,6 +70,7 @@ export default function Home() {
 	const [interval, setIntervalValue] = useState("60 sec");
 	const [project, setProject] = useState("");
 	const [team, setTeam] = useState("");
+	const [nextDaysLimit, setNextDaysLimit] = useState("1");
 	const [projectLink, setProjectLink] = useState("");
 	const [linkError, setLinkError] = useState("");
 	const [sessionToken, setSessionToken] = useState("");
@@ -119,6 +121,8 @@ export default function Home() {
 					setProject(data.project);
 				if (data.teamId)
 					setTeam(data.teamId);
+				if (data.nextDaysLimit)
+					setNextDaysLimit(String(data.nextDaysLimit));
 				setActivities(data.activities ?? []);
 			} catch { }
 		};
@@ -196,7 +200,12 @@ export default function Home() {
 			const response = await fetch("/api/connect", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ token: sessionToken, project, teamId: team }),
+				body: JSON.stringify({
+					token: sessionToken,
+					project,
+					teamId: team,
+					nextDaysLimit,
+				}),
 			});
 			const data = (await response.json()) as ApiResult;
 
@@ -247,7 +256,7 @@ export default function Home() {
 		if (!connected || !monitoring)
 			return;
 
-		const id = window.setInterval(() => void requestStatus(), intervalSeconds * 1000);
+		const id = window.setInterval(() => requestStatus(), intervalSeconds * 1000);
 		return () => window.clearInterval(id);
 	}, [connected, intervalSeconds, monitoring, requestStatus]);
 
@@ -264,7 +273,7 @@ export default function Home() {
 			const response = await fetch("/api/config", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ project, teamId: team }),
+				body: JSON.stringify({ project, teamId: team, nextDaysLimit }),
 			});
 			const data = (await response.json()) as ApiResult;
 			if (!response.ok)
@@ -281,6 +290,19 @@ export default function Home() {
 			setConnectionError(message);
 			addActivity("Could not save configuration", message, "error");
 		}
+	}
+
+	function saveDaysLimit() {
+		const days = Number(nextDaysLimit);
+
+		if (!Number.isInteger(days) || days < 1 || days > 30) {
+			setReCheckError("Days ahead must be a whole number from 1 to 30.");
+			return;
+		}
+		setReCheckError("");
+
+		if (connected)
+			save();
 	}
 
 	async function toggleNotifications() {
@@ -473,6 +495,30 @@ export default function Home() {
 										</button>
 									))}
 								</div>
+							</div>
+							<div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+								<div>
+									<p className="text-sm font-medium">
+										Days ahead
+									</p>
+									<p className="mt-1 text-xs text-[#738096]">
+										How many upcoming days should we search.
+									</p>
+								</div>
+								<label className="flex h-9 items-center overflow-hidden rounded-lg border border-[#2b3440] bg-[#181e26]">
+									<input
+										type="number"
+										min="1"
+										max="30"
+										value={nextDaysLimit}
+										onChange={(event) => setNextDaysLimit(event.target.value)}
+										onBlur={saveDaysLimit}
+										className="h-full w-14 bg-transparent px-3 text-center text-sm text-slate-100 outline-none"
+									/>
+									<span className="border-l border-[#2b3440] px-3 text-xs text-[#8492a5]">
+										days
+									</span>
+								</label>
 							</div>
 							{control("Play alert sound", "", sound, () => setSound(!sound), "♬",)}
 							{control("Browser notifications", "", notifications, () => toggleNotifications(), "♧",)}

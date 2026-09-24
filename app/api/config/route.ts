@@ -1,13 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { checkSlots, parseSlotConfig, SlotError } from "@/lib/slots";
-import {
-	addSessionActivity,
-	getSession,
-	markChecked,
-	updateKnownSlotIds,
-	updateSessionConfig,
-} from "@/lib/server-session";
+import { addSessionActivity, getSession, markChecked, updateKnownSlotIds, updateSessionConfig, } from "@/lib/server-session";
 
 const SESSION_COOKIE = "slot_alert_session";
 
@@ -16,16 +10,20 @@ export async function POST(request: NextRequest) {
 	if (origin && origin !== request.nextUrl.origin)
 		return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
 
-	let body: { project?: unknown; teamId?: unknown };
+	let body: {
+		project?: unknown;
+		teamId?: unknown;
+		nextDaysLimit?: unknown;
+	};
 	try {
 		body = await request.json();
 	} catch {
 		return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 	}
 
-	const config = parseSlotConfig(body.project, body.teamId);
+	const config = parseSlotConfig(body.project, body.teamId, body.nextDaysLimit);
 	if (!config)
-		return NextResponse.json({ error: "Enter a valid project and Team ID." }, { status: 400 });
+		return NextResponse.json({ error: "Enter a valid project, Team ID, and days limit (1-30)." }, { status: 400 });
 
 	const cookieStore = await cookies();
 	const session = getSession(cookieStore.get(SESSION_COOKIE)?.value);

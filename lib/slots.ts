@@ -1,6 +1,7 @@
 export type SlotConfig = {
 	project: string;
 	teamId: string;
+	nextDaysLimit: number;
 };
 
 export type SlotCheck = {
@@ -13,28 +14,13 @@ const PROJECT_HOST = "projects.intra.42.fr";
 const PROJECT_PATTERN = /^[a-z0-9][a-z0-9_-]{0,79}$/i;
 const TEAM_PATTERN = /^\d{1,16}$/;
 
-export function parseSlotConfig(project: unknown, teamId: unknown,): SlotConfig | null {
-	if (typeof project !== "string" || typeof teamId !== "string" || !PROJECT_PATTERN.test(project) || !TEAM_PATTERN.test(teamId))
+export function parseSlotConfig(project: unknown, teamId: unknown, nextDaysLimit: unknown): SlotConfig | null {
+	const days = typeof nextDaysLimit === "number" ? nextDaysLimit : typeof nextDaysLimit === "string" ? Number(nextDaysLimit) : NaN;
+
+	if (typeof project !== "string" || typeof teamId !== "string" || !PROJECT_PATTERN.test(project) || !TEAM_PATTERN.test(teamId) || !Number.isInteger(days) || days < 1 || days > 30)
 		return null;
 
-	return { project, teamId };
-}
-
-export function parseSlotsLink(value: unknown): SlotConfig | null {
-	if (typeof value !== "string")
-		return null;
-
-	try {
-		const url = new URL(value);
-		const match = url.pathname.match(/^\/projects\/([^/]+)\/slots(?:\.json)?\/?$/,);
-
-		if (url.protocol !== "https:" || url.hostname !== PROJECT_HOST || !match)
-			return null;
-
-		return parseSlotConfig(decodeURIComponent(match[1]), url.searchParams.get("team_id"),);
-	} catch {
-		return null;
-	}
+	return { project, teamId, nextDaysLimit: days };
 }
 
 function extractSlots(payload: unknown): unknown[] {
@@ -64,12 +50,24 @@ function extractSlotIds(slots: unknown[]): string[] {
 	return [...ids];
 }
 
+function formatDateOffset(daysOffset: number): string {
+	const date = new Date();
+	date.setDate(date.getDate() + daysOffset);
+
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const day = String(date.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+}
+
 export async function checkSlots(token: string, config: SlotConfig,): Promise<SlotCheck> {
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), 12_000);
 	const url = new URL(`https://${PROJECT_HOST}/projects/${encodeURIComponent(config.project)}/slots.json`,);
 
 	url.searchParams.set("team_id", config.teamId);
+	url.searchParams.set("start", formatDateOffset(0));
+	url.searchParams.set("end", formatDateOffset(config.nextDaysLimit));
 
 	try {
 		const response = await fetch(url, {
@@ -96,9 +94,10 @@ export async function checkSlots(token: string, config: SlotConfig,): Promise<Sl
 		}
 
 		const slots = extractSlots(payload);
+		const slotIds = extractSlotIds(slots);
 		return {
-			availableSlots: slots.length,
-			slotIds: extractSlotIds(slots),
+			availableSlots: slotIds.length,
+			slotIds,
 			checkedAt: new Date().toISOString(),
 		};
 	} catch (error) {
