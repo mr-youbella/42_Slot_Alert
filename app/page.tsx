@@ -64,7 +64,6 @@ function CardTitle({ icon, title, text }: { icon: string; title: string; text: s
 }
 
 export default function Home() {
-	const monitoring = true;
 	const [sound, setSound] = useState(true);
 	const [notifications, setNotifications] = useState(false);
 	const [interval, setIntervalValue] = useState("60 sec");
@@ -82,11 +81,11 @@ export default function Home() {
 	const [reCheckError, setReCheckError] = useState("");
 	const [isChecking, setIsChecking] = useState(false);
 	const [ago, setAgo] = useState(12);
+	const [nextCheckAgo, setNextCheckAgo] = useState(0);
 	const [toast, setToast] = useState(false);
 	const [saved, setSaved] = useState(false);
 	const [activities, setActivities] = useState<Activity[]>([]);
-	const intervalSeconds = interval === "30 sec" ? 30 : interval === "2 min" ? 120 : 60;
-	const isMonitoringActive = connected && monitoring;
+	const intervalSeconds = interval === "10 sec" ? 10 : interval === "30 sec" ? 30 : interval === "2 min" ? 120 : 60;
 
 	const addActivity = useCallback((title: string, description: string, tone: Activity["tone"] = "info",) => {
 		setActivities((current) => [
@@ -102,7 +101,10 @@ export default function Home() {
 	}, []);
 
 	useEffect(() => {
-		const id = setInterval(() => setAgo((n) => n + 1), 1000);
+		const id = setInterval(() => {
+			setAgo((n) => n + 1);
+			setNextCheckAgo((n) => n + 1);
+		}, 1000);
 		return () => clearInterval(id);
 	}, []);
 
@@ -142,7 +144,7 @@ export default function Home() {
 		}
 	}, [sound]);
 
-	const requestStatus = useCallback(async () => {
+	const requestStatus = useCallback(async (isAutomatic = false) => {
 		setIsChecking(true);
 		setReCheckError("");
 
@@ -153,6 +155,8 @@ export default function Home() {
 			if (!response.ok) {
 				if (data.activities)
 					setActivities(data.activities);
+				if (isAutomatic && response.status === 429)
+					return;
 				throw new Error(data.error ?? "Could not check 42.");
 			}
 
@@ -161,6 +165,7 @@ export default function Home() {
 			setAvailableSlots(nextSlotCount);
 			setActivities(data.activities ?? []);
 			setAgo(0);
+			setNextCheckAgo(0);
 			if (hasNewAvailability) {
 				setToast(true);
 				playAlertSound();
@@ -213,6 +218,7 @@ export default function Home() {
 			setAvailableSlots(data.availableSlots ?? 0);
 			setActivities(data.activities ?? []);
 			setAgo(0);
+			setNextCheckAgo(0);
 		} catch (error) {
 			setConnected(false);
 			const message = error instanceof Error ? error.message : "Could not connect to 42.";
@@ -247,12 +253,24 @@ export default function Home() {
 	}
 
 	useEffect(() => {
-		if (!connected || !monitoring)
+		if (!connected)
 			return;
 
-		const id = window.setInterval(() => requestStatus(), intervalSeconds * 1000);
-		return () => window.clearInterval(id);
-	}, [connected, intervalSeconds, monitoring, requestStatus]);
+		let timeoutId: number;
+		let stopped = false;
+
+		function scheduleNextCheck() {
+			setNextCheckAgo(0);
+			timeoutId = window.setTimeout(async () => {
+				await requestStatus(true);
+				if (!stopped)
+					scheduleNextCheck();
+			}, intervalSeconds * 1000 + 250);
+		}
+
+		scheduleNextCheck();
+		return () => { stopped = true; window.clearTimeout(timeoutId); };
+	}, [connected, intervalSeconds, requestStatus]);
 
 	async function save() {
 		setConnectionError("");
@@ -276,6 +294,7 @@ export default function Home() {
 			setAvailableSlots(data.availableSlots ?? 0);
 			setActivities(data.activities ?? []);
 			setAgo(0);
+			setNextCheckAgo(0);
 			setSaved(true);
 			setTimeout(() => setSaved(false), 1800);
 		} catch (error) {
@@ -377,9 +396,9 @@ export default function Home() {
 							/>
 						</span>
 						<b className="text-sm">42 Slot Alert</b>
-						<span className={`hidden items-center gap-2 rounded-full border px-3 py-1 text-xs sm:flex ${isMonitoringActive ? "border-emerald-400/15 bg-emerald-400/[.07] text-emerald-300" : "border-slate-700 text-slate-400"}`}>
-							<i className={`size-1.5 rounded-full ${isMonitoringActive ? "bg-emerald-400 shadow-[0_0_8px_#31d17c]" : "bg-slate-500"}`} />
-							{isChecking ? "Checking 42…" : isMonitoringActive ? "Monitoring active" : "Monitoring paused"}
+						<span className={`hidden items-center gap-2 rounded-full border px-3 py-1 text-xs sm:flex ${connected ? "border-emerald-400/15 bg-emerald-400/[.07] text-emerald-300" : "border-slate-700 text-slate-400"}`}>
+							<i className={`size-1.5 rounded-full ${connected ? "bg-emerald-400 shadow-[0_0_8px_#31d17c]" : "bg-slate-500"}`} />
+							{isChecking ? "Checking 42…" : connected ? "Monitoring active" : "Monitoring paused"}
 						</span>
 					</div>
 					<div className="flex items-center gap-3 text-[#91a0b4]">
@@ -400,7 +419,7 @@ export default function Home() {
 						</h1>
 					</div>
 					<p className="text-xs text-[#738096]">
-						◷ &nbsp; Next check in {isMonitoringActive ? Math.max(0, intervalSeconds - ago) : "paused"}{" "} seconds
+						◷ &nbsp; {connected ? isChecking ? "Checking now..." : `Next check in ${Math.max(1, intervalSeconds - nextCheckAgo)} seconds` : "Monitoring paused"}
 					</p>
 				</section>
 				<section className="overflow-hidden rounded-2xl border border-[#252e38] bg-[#11161c]">
@@ -477,12 +496,12 @@ export default function Home() {
 									</p>
 								</div>
 								<div className="flex rounded-xl border border-[#2b3440] bg-[#181e26] p-1">
-									{["30 sec", "60 sec", "2 min"].map((x) => (
+									{["10 sec", "30 sec", "60 sec", "2 min"].map((x) => (
 										<button
 											key={x}
 											onClick={() => {
 												setIntervalValue(x);
-												setAgo(0);
+												setNextCheckAgo(0);
 											}}
 											className={`rounded-lg px-3 py-1.5 text-xs ${interval === x ? "bg-[#37414f] text-white" : "text-[#788599]"}`}
 										>

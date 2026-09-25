@@ -20,7 +20,7 @@ export type ServerSession = {
 };
 
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
-const MIN_CHECK_INTERVAL_MS = 15_000;
+const MIN_CHECK_INTERVAL_MS = 10_000;
 
 const store = globalThis as typeof globalThis & {
 	__slotAlertSessions?: Map<string, ServerSession>;
