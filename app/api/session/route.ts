@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/server-session";
+import { getSession } from "@/lib/server_session";
 
 const SESSION_COOKIE = "slot_alert_session";
 

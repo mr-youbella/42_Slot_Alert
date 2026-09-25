@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { checkSlots, parseSlotConfig, SlotError } from "@/lib/slots";
-import { addSessionActivity, createSession, deleteSession, getSession, updateKnownSlotIds } from "@/lib/server-session";
+import { addSessionActivity, createSession, deleteSession, getSession, updateKnownSlotIds } from "@/lib/server_session";
 
 const SESSION_COOKIE = "slot_alert_session";
 
