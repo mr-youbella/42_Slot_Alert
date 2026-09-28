@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { checkSlots, parseSlotConfig, SlotError } from "@/lib/slots";
-import { addSessionActivity, getSession, markChecked, updateKnownSlotIds, updateSessionConfig, } from "@/lib/server_session";
+import { addSessionActivity, getSession, markChecked, saveSession, SessionStoreError, updateKnownSlotIds, updateSessionConfig, } from "@/lib/server_session";
 
 const SESSION_COOKIE = "slot_alert_session";
 
@@ -26,8 +26,15 @@ export async function POST(request: NextRequest) {
 		return NextResponse.json({ error: "Enter a valid project, Team ID, and days limit (1-30)." }, { status: 400 });
 
 	const cookieStore = await cookies();
-	const session = getSession(cookieStore.get(SESSION_COOKIE)?.value);
-	if (!session)
+	const id = cookieStore.get(SESSION_COOKIE)?.value;
+	let session;
+
+	try {
+		session = await getSession(id);
+	} catch {
+		return NextResponse.json({ error: "Session storage is temporarily unavailable." }, { status: 503 });
+	}
+	if (!id || !session)
 		return NextResponse.json({ error: "Connect your 42 session first." }, { status: 401 });
 
 	try {
@@ -36,6 +43,7 @@ export async function POST(request: NextRequest) {
 		updateKnownSlotIds(session, result.slotIds);
 		markChecked(session);
 		addSessionActivity(session, "Project configuration updated", `${config.project} · Team #${config.teamId}`, "success",);
+		await saveSession(id, session);
 		return NextResponse.json({
 			...result,
 			project: config.project,
@@ -43,8 +51,8 @@ export async function POST(request: NextRequest) {
 			activities: session.activities,
 		});
 	} catch (error) {
-		const message = error instanceof SlotError ? error.message : "Could not save this configuration.";
-		const status = error instanceof SlotError ? error.status : 502;
+		const message = error instanceof SlotError ? error.message : error instanceof SessionStoreError ? "Session storage is temporarily unavailable." : "Could not save this configuration.";
+		const status = error instanceof SlotError ? error.status : error instanceof SessionStoreError ? 503 : 502;
 		return NextResponse.json({ error: message }, { status });
 	}
 }

@@ -24,13 +24,10 @@ export function parseSlotConfig(project: unknown, teamId: unknown, nextDaysLimit
 }
 
 function extractSlots(payload: unknown): unknown[] {
-	if (Array.isArray(payload))
-		return payload;
+	if (!Array.isArray(payload))
+		return [];
 
-	if (payload && typeof payload === "object" && "slots" in payload && Array.isArray(payload.slots))
-		return payload.slots;
-
-	return [];
+	return payload;
 }
 
 function extractSlotIds(slots: unknown[]): string[] {

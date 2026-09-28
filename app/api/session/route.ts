@@ -6,7 +6,13 @@ const SESSION_COOKIE = "slot_alert_session";
 
 export async function GET() {
 	const cookieStore = await cookies();
-	const session = getSession(cookieStore.get(SESSION_COOKIE)?.value);
+	let session;
+
+	try {
+		session = await getSession(cookieStore.get(SESSION_COOKIE)?.value);
+	} catch {
+		return NextResponse.json({ error: "Session storage is temporarily unavailable." }, { status: 503 });
+	}
 
 	if (!session)
 		return NextResponse.json({ connected: false }, { status: 401 });

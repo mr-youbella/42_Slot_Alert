@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { checkSlots, parseSlotConfig, SlotError } from "@/lib/slots";
-import { addSessionActivity, createSession, deleteSession, getSession, updateKnownSlotIds } from "@/lib/server_session";
+import { addSessionActivity, createSession, deleteSession, saveSession, SessionStoreError, updateKnownSlotIds } from "@/lib/server_session";
 
 const SESSION_COOKIE = "slot_alert_session";
 
@@ -28,11 +28,7 @@ export async function POST(request: NextRequest) {
 		return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 	}
 
-	const config = parseSlotConfig(
-		body.project,
-		body.teamId,
-		body.nextDaysLimit,
-	);
+	const config = parseSlotConfig(body.project, body.teamId, body.nextDaysLimit,);
 	const token = typeof body.token === "string" ? body.token.trim() : "";
 	if (!config)
 		return NextResponse.json({ error: "Enter a valid project, Team ID, and days limit (1-30)." }, { status: 400 });
@@ -42,15 +38,12 @@ export async function POST(request: NextRequest) {
 	try {
 		const result = await checkSlots(token, config);
 		const cookieStore = await cookies();
-		deleteSession(cookieStore.get(SESSION_COOKIE)?.value);
-		const id = createSession(token, config);
-		const session = getSession(id);
-
-		if (!session)
-			throw new Error("Could not create a session.");
+		const { id, session } = await createSession(token, config);
 
 		updateKnownSlotIds(session, result.slotIds);
 		addSessionActivity(session, "Connected to 42", "Session verified and slot monitoring is ready.", "success");
+		await saveSession(id, session);
+		await deleteSession(cookieStore.get(SESSION_COOKIE)?.value);
 		const response = NextResponse.json({
 			...result,
 			connected: true,
@@ -68,8 +61,8 @@ export async function POST(request: NextRequest) {
 
 		return response;
 	} catch (error) {
-		const message = error instanceof SlotError ? error.message : "Could not connect to 42.";
-		const status = error instanceof SlotError ? error.status : 502;
+		const message = error instanceof SlotError ? error.message : error instanceof SessionStoreError ? "Session storage is temporarily unavailable." : "Could not connect to 42.";
+		const status = error instanceof SlotError ? error.status : error instanceof SessionStoreError ? 503 : 502;
 		return NextResponse.json({ error: message }, { status });
 	}
 }

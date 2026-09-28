@@ -1,16 +1,22 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { checkSlots, SlotError } from "@/lib/slots";
-import { addSessionActivity, getNewSlotIds, getSession, markChecked, remainingCooldown, updateKnownSlotIds, } from "@/lib/server_session";
+import { addSessionActivity, getNewSlotIds, getSession, markChecked, remainingCooldown, saveSession, SessionStoreError, updateKnownSlotIds, } from "@/lib/server_session";
 
 const SESSION_COOKIE = "slot_alert_session";
 
 export async function GET() {
 	const cookieStore = await cookies();
 	const id = cookieStore.get(SESSION_COOKIE)?.value;
-	const session = getSession(id);
+	let session;
 
-	if (!session)
+	try {
+		session = await getSession(id);
+	} catch {
+		return NextResponse.json({ error: "Session storage is temporarily unavailable." }, { status: 503 });
+	}
+
+	if (!id || !session)
 		return NextResponse.json({ error: "Connect your 42 session first." }, { status: 401 });
 
 	const cooldown = remainingCooldown(session);
@@ -33,6 +39,7 @@ export async function GET() {
 			result.availableSlots > 0 ? `${result.availableSlots} slot(s) available` : "No availability",
 			hasNewAvailability ? "success" : "info",
 		);
+		await saveSession(id, session);
 		return NextResponse.json({
 			...result,
 			project: session.config.project,
@@ -41,9 +48,13 @@ export async function GET() {
 			activities: session.activities,
 		});
 	} catch (error) {
+		if (error instanceof SessionStoreError)
+			return NextResponse.json({ error: "Session storage is temporarily unavailable." }, { status: 503 });
+
 		const message = error instanceof SlotError ? error.message : "Could not check 42.";
 		const status = error instanceof SlotError ? error.status : 502;
 		addSessionActivity(session, "Slot check failed", message, "error");
+		await saveSession(id, session);
 		return NextResponse.json(
 			{ error: message, activities: session.activities },
 			{ status },
