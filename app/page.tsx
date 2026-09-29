@@ -452,8 +452,8 @@ export default function Home() {
 							<p className="mt-1 text-5xl font-semibold tracking-[-.07em]">
 								{availableSlots}
 							</p>
-							<p className="mt-1 text-xs text-[#667388]">
-								No openings detected
+							<p className="mt-1 text-xs text-[#738096]">
+								{availableSlots > 0 ? "Openings detected" : "No openings detected"}
 							</p>
 						</div>
 					</div>
