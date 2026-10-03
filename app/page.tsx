@@ -1,5 +1,6 @@
 "use client";
 import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 type ApiResult = {
@@ -763,12 +764,13 @@ export default function Home() {
 									<code>{project || "ft_irc"}</code>.
 								</p>
 								<div className="mt-3 flex gap-3">
-									<button
+									<Link
 										onClick={() => setToast(false)}
+										href={`https://projects.intra.42.fr/projects/${project}/slots?team_id=${team}`}
 										className="rounded-lg bg-emerald-400 px-3 py-1.5 text-xs font-semibold text-[#052212]"
 									>
 										View slot ↗
-									</button>
+									</Link>
 									<button
 										onClick={() => setToast(false)}
 										className="text-xs text-[#98aa9b]"
