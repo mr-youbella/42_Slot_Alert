@@ -441,8 +441,7 @@ export default function Home() {
 								We are checking automatically every {interval}.
 							</p>
 							<p className="mt-7 text-xs text-[#718096]">
-								● &nbsp; Last checked{" "}
-								{ago === 0 ? "just now" : ago + " sec ago"}
+								● &nbsp; {connected ? `Last checked${" "} ${ago === 0 ? "just now" : ago + " sec ago"}` : "Monitoring paused"}
 							</p>
 						</div>
 						<div className="min-w-44.5 border-t border-[#252e38] pt-6 md:border-l md:border-t-0 md:pl-12 md:pt-0">
